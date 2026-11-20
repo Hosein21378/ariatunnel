@@ -4,6 +4,9 @@ from fastapi.templating import Jinja2Templates
 import uvicorn
 import os
 import sqlite3
+import subprocess
+import signal
+import sys
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -31,10 +34,28 @@ def init_db():
                 country TEXT,
                 status TEXT DEFAULT 'online'
             )''')
+    cols = [r[1] for r in c.execute("PRAGMA table_info(nodes)")]
+    if "local_port" not in cols:
+        c.execute("ALTER TABLE nodes ADD COLUMN local_port INTEGER")
+    if "pid" not in cols:
+        c.execute("ALTER TABLE nodes ADD COLUMN pid INTEGER")
+    if "secret" not in cols:
+        c.execute("ALTER TABLE nodes ADD COLUMN secret TEXT")
+    if "dest" not in cols:
+        c.execute("ALTER TABLE nodes ADD COLUMN dest TEXT DEFAULT '1.1.1.1:443'")
     conn.commit()
     conn.close()
 
 init_db()
+
+CORE_CLIENT = str(BASE_DIR.parent / "core" / "client.py")
+SECRET_FILE = "/etc/ariatunnel.secret"
+
+def _secret():
+    try:
+        return Path(SECRET_FILE).read_text().strip()
+    except Exception:
+        return os.getenv("TUNNEL_SECRET", "AriaTunnelSecureKey2026!")
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
@@ -68,9 +89,71 @@ async def add_user(username: str = Form(...), traffic_gb: float = Form(50.0)):
     conn.close()
     return RedirectResponse(url="/", status_code=303)
 
+@app.post("/add_node")
+async def add_node(name: str = Form(...), ip: str = Form(...), country: str = Form("Turkey"),
+                   secret: str = Form(""), dest: str = Form("1.1.1.1:443")):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    try:
+        c.execute("INSERT INTO nodes (name, ip, country, status, secret, dest) VALUES (?, ?, ?, 'offline', ?, ?)",
+                  (name, ip, country, secret or None, dest))
+        conn.commit()
+    except Exception:
+        pass
+    conn.close()
+    return RedirectResponse(url="/", status_code=303)
+
+def _alive(pid):
+    if not pid:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except Exception:
+        return False
+
+@app.post("/connect/{node_id}")
+async def connect_node(node_id: int):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    row = c.execute("SELECT ip, local_port, pid, secret, dest FROM nodes WHERE id=?", (node_id,)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(404, "node not found")
+    ip, local_port, pid, node_secret, dest = row
+    if _alive(pid):
+        conn.close()
+        return RedirectResponse(url="/", status_code=303)
+    local_port = local_port or (10800 + node_id)
+    env = dict(os.environ, SERVER_HOST=ip, SERVER_PORT=os.getenv("TUNNEL_PORT", "8443"),
+               LOCAL_PORT=str(local_port), TUNNEL_SECRET=node_secret or _secret(),
+               TARGET_DEST=dest or "1.1.1.1:443")
+    proc = subprocess.Popen([sys.executable, CORE_CLIENT], env=env,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            start_new_session=True)
+    c.execute("UPDATE nodes SET local_port=?, pid=?, status='online' WHERE id=?",
+              (local_port, proc.pid, node_id))
+    conn.commit()
+    conn.close()
+    return RedirectResponse(url="/", status_code=303)
+
+@app.post("/disconnect/{node_id}")
+async def disconnect_node(node_id: int):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    row = c.execute("SELECT pid FROM nodes WHERE id=?", (node_id,)).fetchone()
+    if row and row[0]:
+        try:
+            os.kill(row[0], signal.SIGTERM)
+        except Exception:
+            pass
+    c.execute("UPDATE nodes SET pid=NULL, status='offline' WHERE id=?", (node_id,))
+    conn.commit()
+    conn.close()
+    return RedirectResponse(url="/", status_code=303)
+
 @app.get("/api/status")
 async def api_status():
     return {"status": "ok", "service": "AriaTunnel Panel"}
-
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
