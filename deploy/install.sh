@@ -18,7 +18,7 @@ command -v curl >/dev/null || apt-get install -y -qq curl
 # --- fetch code (tarball, works without git) ---------------------------------
 if [ ! -d "$DIR" ]; then
   mkdir -p "$DIR"
-  curl -sSL "https://github.com/Hosein21378/ariatunnel/archive/refs/heads/master.tar.gz" \
+  curl -sSL "https://codeload.github.com/Hosein21378/ariatunnel/tar.gz/refs/heads/master" \
     | tar xz -C "$DIR" --strip-components=1
 fi
 cd "$DIR"
