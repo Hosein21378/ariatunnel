@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
-AriaTunnel Client Core (Iran VPS)
+AriaTunnel Client Core (Iran VPS / Entry)
 Local tunnel entrypoint forwarding user traffic securely to Foreign Server.
+Supports tcp (raw) and tls (TLS-wrapped, looks like HTTPS to DPI) transports.
 """
 import asyncio
 import logging
 import os
+import ssl
 import sys
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 
@@ -17,23 +19,39 @@ KEY = (SECRET_KEY * (32 // len(SECRET_KEY) + 1))[:32]
 cipher = ChaCha20Poly1305(KEY)
 
 SERVER_HOST = os.getenv("SERVER_HOST", "127.0.0.1")
-SERVER_PORT = int(os.getenv("SERVER_PORT", 8443))
+SERVER_PORT = int(os.getenv("SERVER_PORT", "8443"))
+LOCAL_PORT = int(os.getenv("LOCAL_PORT", "1080"))
+TARGET_DEST = os.getenv("TARGET_DEST", "1.1.1.1:443")
+TRANSPORT = os.getenv("TUNNEL_TRANSPORT", "tcp")  # tcp or tls
+
+
+def get_ssl_context():
+    """Client-side SSL context for TLS transport (accepts self-signed cert)."""
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
 
 async def handle_local(local_reader: asyncio.StreamReader, local_writer: asyncio.StreamWriter):
-    peer = local_writer.get_extra_info('peername')
+    peer = local_writer.get_extra_info("peername")
     try:
         # Connect to foreign server tunnel
-        remote_reader, remote_writer = await asyncio.open_connection(SERVER_HOST, SERVER_PORT)
-        
-        # Determine target host/port (in real SOCKS5/TUN mode, parse destination. For SNI sniffing or port mapping):
-        # Here we support dynamic or default destination mapping
-        target = os.getenv("TARGET_DEST", "1.1.1.1:443")
-        
+        if TRANSPORT == "tls":
+            ssl_context = get_ssl_context()
+            remote_reader, remote_writer = await asyncio.open_connection(
+                SERVER_HOST, SERVER_PORT, ssl=ssl_context
+            )
+        else:
+            remote_reader, remote_writer = await asyncio.open_connection(SERVER_HOST, SERVER_PORT)
+
+        # Send encrypted header with target destination
         nonce = os.urandom(12)
-        header = nonce + cipher.encrypt(nonce, target.encode(), None)
-        remote_writer.write(len(header).to_bytes(2, 'big') + header)
+        header = nonce + cipher.encrypt(nonce, TARGET_DEST.encode(), None)
+        remote_writer.write(len(header).to_bytes(2, "big") + header)
         await remote_writer.drain()
-        
+
+        # Wait for handshake response
         status = await remote_reader.readexactly(1)
         if status != b"\x01":
             logger.error("Tunnel handshake failed at remote server")
@@ -57,7 +75,7 @@ async def handle_local(local_reader: asyncio.StreamReader, local_writer: asyncio
 
         await asyncio.gather(
             forward(local_reader, remote_writer),
-            forward(remote_reader, local_writer)
+            forward(remote_reader, local_writer),
         )
     except Exception as e:
         logger.error(f"Client tunnel error: {e}")
@@ -68,12 +86,16 @@ async def handle_local(local_reader: asyncio.StreamReader, local_writer: asyncio
         except Exception:
             pass
 
+
 async def main():
-    local_port = int(os.getenv("LOCAL_PORT", 1080))
-    server = await asyncio.start_server(handle_local, "0.0.0.0", local_port)
-    logger.info(f"AriaTunnel Client listening on 0.0.0.0:{local_port} -> {SERVER_HOST}:{SERVER_PORT}")
+    server = await asyncio.start_server(handle_local, "0.0.0.0", LOCAL_PORT)
+    transport_label = "TLS (DPI-resistant)" if TRANSPORT == "tls" else "TCP"
+    logger.info(
+        f"AriaTunnel Client ({transport_label}) on 0.0.0.0:{LOCAL_PORT} -> {SERVER_HOST}:{SERVER_PORT} -> {TARGET_DEST}"
+    )
     async with server:
         await server.serve_forever()
+
 
 if __name__ == "__main__":
     try:

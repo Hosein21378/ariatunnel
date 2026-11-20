@@ -43,6 +43,8 @@ def init_db():
         c.execute("ALTER TABLE nodes ADD COLUMN secret TEXT")
     if "dest" not in cols:
         c.execute("ALTER TABLE nodes ADD COLUMN dest TEXT DEFAULT '1.1.1.1:443'")
+    if "transport" not in cols:
+        c.execute("ALTER TABLE nodes ADD COLUMN transport TEXT DEFAULT 'tcp'")
     conn.commit()
     conn.close()
 
@@ -91,12 +93,13 @@ async def add_user(username: str = Form(...), traffic_gb: float = Form(50.0)):
 
 @app.post("/add_node")
 async def add_node(name: str = Form(...), ip: str = Form(...), country: str = Form("Turkey"),
-                   secret: str = Form(""), dest: str = Form("1.1.1.1:443")):
+                   secret: str = Form(""), dest: str = Form("1.1.1.1:443"),
+                   transport: str = Form("tcp"), listen_port: int = Form(0)):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     try:
-        c.execute("INSERT INTO nodes (name, ip, country, status, secret, dest) VALUES (?, ?, ?, 'offline', ?, ?)",
-                  (name, ip, country, secret or None, dest))
+        c.execute("INSERT INTO nodes (name, ip, country, status, secret, dest, transport, local_port) VALUES (?, ?, ?, 'offline', ?, ?, ?, ?)",
+                  (name, ip, country, secret or None, dest, transport, listen_port or 0))
         conn.commit()
     except Exception:
         pass
@@ -116,18 +119,18 @@ def _alive(pid):
 async def connect_node(node_id: int):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    row = c.execute("SELECT ip, local_port, pid, secret, dest FROM nodes WHERE id=?", (node_id,)).fetchone()
+    row = c.execute("SELECT ip, local_port, pid, secret, dest, transport FROM nodes WHERE id=?", (node_id,)).fetchone()
     if not row:
         conn.close()
         raise HTTPException(404, "node not found")
-    ip, local_port, pid, node_secret, dest = row
+    ip, local_port, pid, node_secret, dest, transport = row
     if _alive(pid):
         conn.close()
         return RedirectResponse(url="/", status_code=303)
     local_port = local_port or (10800 + node_id)
     env = dict(os.environ, SERVER_HOST=ip, SERVER_PORT=os.getenv("TUNNEL_PORT", "8443"),
                LOCAL_PORT=str(local_port), TUNNEL_SECRET=node_secret or _secret(),
-               TARGET_DEST=dest or "1.1.1.1:443")
+               TARGET_DEST=dest or "1.1.1.1:443", TUNNEL_TRANSPORT=transport or "tcp")
     proc = subprocess.Popen([sys.executable, CORE_CLIENT], env=env,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                             start_new_session=True)

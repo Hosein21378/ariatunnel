@@ -1,58 +1,65 @@
-# AriaTunnel / HyperTunnel
+# AriaTunnel — تونل اختصاصی برای عبور ترافیک از ایران به خارج
 
-یک سیستم تونل‌زنی امن، پرسرعت و سبک با پنل مدیریت تحت وب (FastAPI) برای عبور ترافیک از ایران به سرور خارج با بالاترین امنیت و کمترین تاخیر (Latency).
+توأمین تونل رمزنگارisé (ChaCha20-Poly1305) بین سرور ایران (ورودی) و سرور خارج (خروجی) با پنل مدیریت وب (FastAPI) و قابلیت ترانسپورت **TLS** برای مقاومت در برابر DPI و 필تر شدن.
 
-## ویژگی‌ها
-- **تونل رمزنگاری‌شده مدرن:** پروتکل اختصاصی مبتنی بر Asyncio (TCP/UDP Multiplexing) با رمزنگاری ChaCha20/AES.
-- **پنل مدیریت (Web Dashboard):** مدیریت کاربران، حجم ترافیک، تاریخ انقضا و وضعیت نودها.
-- **نصب خودکار:** اسکریپت تک‌خطی برای نصب روی سرورهای ایران و خارج.
-- **مقاوم در برابر فیلترینگ:** ساختار تمیز و قابل توسعه.
-- **پشتیبانی از Docker:** استقرار آسان با یک دستور.
+## معماری
 
-## 🚀 نصب تک‌خطی (One-Liner Install)
+```
+کاربران اینترنت → [سرور ایران: پورت لوکال] → [تونل TLS/TCP رمزنگار] → [سرور خارج ترکیه] → مقصد واقعی (مثل 1.1.1.1:443)
+```
 
-با یک دستور، پنل مدیریت و دیمون‌های تونل را نصب و راه‌اندازی کنید:
+## استقرار سریع (تک خطی)
 
-### ۱. نصب پنل مدیریت (روی سرور پنل / ایران)
+سرور خارج (ترکیه / خروجی):
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/Hosein21378/ariatunnel/master/deploy/install.sh) panel
+bash <(curl -sSL https://codeload.github.com/Hosein21378/ariatunnel/tar.gz/refs/heads/master | tar xz -O deploy/install.sh) server
 ```
-پس از نصب، پنل روی پورت `8000` در دسترس خواهد بود.
 
-### ۲. نصب سرور خارج (Server)
+سرور ایران (ورودی) — ترانسپورت TCP (سریع، diagnosis آسان):
 ```bash
-bash <(curl -sSL https://raw.githubusercontent.com/Hosein21378/ariatunnel/master/deploy/install.sh) server
+SERVER_HOST=206.1.97.101 bash <(curl -sSL https://codeload.github.com/Hosein21378/ariatunnel/tar.gz/refs/heads/master | tar xz -O deploy/install.sh) client
 ```
 
-### ۳. نصب سرور ایران (Client)
-*(به جای IP_KHAREJ آی‌پی سرور خارج را وارد کنید)*
+سرور ایران (ورودی) — ترانسپورت TLS (مثل HTTPS، DPI-resistant، مناسب برای دور زدن فیلتر):
 ```bash
-SERVER_HOST=<IP_KHAREJ> bash <(curl -sSL https://raw.githubusercontent.com/Hosein21378/ariatunnel/master/deploy/install.sh) client
+SERVER_HOST=206.1.97.101 SERVER_PORT=443 CLIENT_TRANSPORT=tls bash <(curl -sSL https://codeload.github.com/Hosein21378/ariatunnel/tar.gz/refs/heads/master | tar xz -O deploy/install.sh) client
 ```
 
----
-
-## 🖥 اتصال سرورها از داخل پنل
-
-1. پنل را باز کن: `http://<IP>:8000`
-2. روی سرور خارج یک‌بار نصب `server` بزن — اسکریپت آخر کار `TUNNEL_SECRET=...` را چاپ می‌کند.
-3. در پنل فرم **افزودن نود**: نام، IP سرور خارج، کشور و همان SECRET را وارد کن.
-4. دکمه **اتصال تونل** → کلاینت روی پورت `10801` (هر نود +۱) بالا می‌آید و تونل برقرار می‌شود.
-5. دکمه **قطع** → پروسهٔ تونل همان نود بسته می‌شود.
-
----
-
-## ساختار پروژه
+پنل مدیریت (سرور خارج یا هر سرور با IP عمومی):
+```bash
+bash <(curl -sSL https://codeload.github.com/Hosein21378/ariatunnel/tar.gz/refs/heads/master | tar xz -O deploy/install.sh) panel
 ```
-.
-├── panel/
-│   ├── main.py          # پنل مدیریت FastAPI
-│   └── templates/       # قالب‌های HTML داشبورد
-├── core/
-│   ├── server.py        # دیتاسنتر / سرور خارج
-│   └── client.py        # سرور ایران / کلاینت تونل
-├── deploy/
-│   └── install.sh       # اسکریپت نصب خودکار
-├── Dockerfile
-└── docker-compose.yml
-```
+
+## پنل مدیریت (FastAPI)
+
+بعد از استارت پنل، به `http://<ip-panel>:8000` مراجعه کنید:
+
+1. نود خارج را اضافه کنید (IP سرور خارج، ترانسپورت `tcp` یا `tls`، پورت لوکال، مقصد).
+2. دکمه **اتصال تونل** را بزنید — کلاینت AriaTunnel روی ایران استارت می‌شود.
+3. ترافیک کاربران به پورت لوکال ایران ارسال شود → از تونل TLS عبور کرده → به مقصد vraie دسترسی پیدا می‌کنند.
+
+### ترانسپورت‌ها
+| ترانسپورت | توضیح | مناسبت برای DPI |
+|-----------|-------|------------------|
+| `tcp` | ترمز خام (بدون TLS) | پایین — DPI می‌تواند شناسایی کند |
+| `tls` | TLS بسته‌بندی شده (مثل HTTPS) | بالا — شبیه ترافیک وب عادی است |
+
+## نکات امنیتی
+
+- کلید مشترک (`TUNNEL_SECRET`) در `/etc/ariatunnel.secret` ذخیره می‌شود؛ هرگز در چت یا گیت‌هاب ثبت نکنید.
+- برای TLS، گواهی‌نامهٔ خود amضاء (self-signed) به صورت اتوماتیک تولید می‌شود.
+- تغییرات بر گزینه بازگشتی هستند (git revert / stash).
+
+## فایل‌های پروژه
+
+- `core/server.py` — هسته سرور خارج (پذیرش تونل، Forward به مقصد)
+- `core/client.py` — هسته کلاینت ایران (پورت لوکال → تونل → خارج)
+- `panel/main.py` — پنل FastAPI (مدیریت نودها، اتصال/قطع تونل)
+- `panel/templates/index.html` — رابط وب مدیریت (فارسی، RTL)
+- `deploy/install.sh` — نصب تک‌خطی برای server/client/panel
+- `tests/selfcheck.py` — تست رله end-to-end
+- `tests/panel_e2e.py` — تست پنل → نود → تونل
+
+## گیت‌هاب
+
+https://github.com/Hosein21378/ariatunnel (عمومی)

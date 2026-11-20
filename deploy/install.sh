@@ -49,13 +49,17 @@ unit() {
 
 case "$ROLE" in
   server)
+    TRANSPORT="${SERVER_TRANSPORT:-tcp}"
+    PORT=8443
+    if [ "$TRANSPORT" = "tls" ]; then PORT=443; fi
     unit server <<EOF
 [Unit]
-Description=AriaTunnel Server
+Description=AriaTunnel Server ($TRANSPORT)
 After=network-online.target
 [Service]
 Environment=TUNNEL_SECRET=$SECRET
-Environment=TUNNEL_PORT=8443
+Environment=TUNNEL_PORT=$PORT
+Environment=TUNNEL_TRANSPORT=$TRANSPORT
 ExecStart=$PY $DIR/core/server.py
 Restart=always
 RestartSec=3
@@ -66,28 +70,31 @@ EOF
     echo "================ SAVE THIS SECRET ================"
     echo "TUNNEL_SECRET=$SECRET"
     echo "=================================================="
-    echo "==> tunnel server listening on :8443"
+    echo "==> tunnel server ($TRANSPORT) listening on :$PORT"
     ;;
   client)
     : "${SERVER_HOST:?usage: SERVER_HOST=<foreign-ip> bash install.sh client}"
+    TRANSPORT="${CLIENT_TRANSPORT:-tcp}"
+    PORT="${SERVER_PORT:-8443}"
+    if [ "$TRANSPORT" = "tls" ]; then PORT="${SERVER_PORT:-443}"; fi
     unit client <<EOF
 [Unit]
-Description=AriaTunnel Client
+Description=AriaTunnel Client ($TRANSPORT)
 After=network-online.target
 [Service]
 Environment=TUNNEL_SECRET=$SECRET
 Environment=SERVER_HOST=$SERVER_HOST
-Environment=SERVER_PORT=${SERVER_PORT:-8443}
+Environment=SERVER_PORT=$PORT
 Environment=LOCAL_PORT=${LOCAL_PORT:-1080}
 Environment=TARGET_DEST=${TARGET_DEST:-1.1.1.1:443}
-Environment=TUNNEL_SECRET=${SECRET_OVERRIDE:-$SECRET}
+Environment=TUNNEL_TRANSPORT=$TRANSPORT
 ExecStart=$PY $DIR/core/client.py
 Restart=always
 RestartSec=3
 [Install]
 WantedBy=multi-user.target
 EOF
-    echo "==> client :${LOCAL_PORT:-1080} -> $SERVER_HOST:${SERVER_PORT:-8443}"
+    echo "==> client ($TRANSPORT) :${LOCAL_PORT:-1080} -> $SERVER_HOST:$PORT"
     ;;
   panel)
     unit panel <<EOF

@@ -45,13 +45,15 @@
                 <div class="card p-4">
                     <h5 class="mb-3">🌐 نودها (سرورها)</h5>
                     <table class="table table-dark table-sm align-middle">
-                        <thead><tr><th>نام</th><th>IP</th><th>کشور</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+                        <thead><tr><th>نام</th><th>IP</th><th>کشور</th><th>ترانسپورت</th><th>پورت لوکال</th><th>وضعیت</th><th>عملیات</th></tr></thead>
                         <tbody>
                         {% for n in nodes %}
                         <tr>
                             <td>{{ n[1] }}</td>
                             <td>{{ n[2] }}</td>
                             <td>{{ n[3] }}</td>
+                            <td>{{ n[7] or 'tcp' }}</td>
+                            <td>{{ n[5] or '—' }}</td>
                             <td><span class="badge {{ 'badge-online' if n[4]=='online' else 'badge-offline' }}">{{ n[4] }}</span></td>
                             <td>
                                 {% if n[6] %}
@@ -67,7 +69,7 @@
                             </td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="5" class="text-secondary text-center">نودی ثبت نشده</td></tr>
+                        <tr><td colspan="7" class="text-secondary text-center">نودی ثبت نشده</td></tr>
                         {% endfor %}
                         </tbody>
                     </table>
@@ -77,6 +79,10 @@
                         <select name="country" class="form-control" style="max-width:130px">
                             <option>Turkey</option><option>Germany</option><option>Netherlands</option><option>UAE</option><option>Finland</option>
                         </select>
+                        <select name="transport" class="form-control" style="max-width:110px">
+                            <option>tcp</option><option>tls</option>
+                        </select>
+                        <input name="listen_port" class="form-control" type="number" placeholder="پورت لوکال" style="max-width:130px">
                         <button class="btn btn-primary">افزودن نود</button>
                     </form>
                     <form method="post" action="/add_node" class="d-flex gap-2 mt-2 flex-wrap">
