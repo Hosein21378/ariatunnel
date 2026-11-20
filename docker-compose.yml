@@ -1,0 +1,21 @@
+services:
+  panel:
+    build: .
+    container_name: ariatunnel-panel
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./panel:/app/panel
+    environment:
+      - TZ=Asia/Tehran
+
+  tunnel-server:
+    build: .
+    container_name: ariatunnel-server
+    restart: unless-stopped
+    command: python core/server.py
+    network_mode: host
+    environment:
+      - TUNNEL_PORT=8443
+      - TUNNEL_SECRET=${TUNNEL_SECRET:-change-me-please}
