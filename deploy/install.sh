@@ -26,12 +26,12 @@ fi
 cd "$DIR"
 
 # --- deps --------------------------------------------------------------------
-if ! "$PY" -c "import fastapi, uvicorn, jinja2, cryptography" 2>/dev/null; then
+if ! "$PY" -c "import fastapi, uvicorn, jinja2, cryptography, multipart" 2>/dev/null; then
   "$PY" -m pip --version >/dev/null 2>&1 || apt-get install -y -qq python3-pip
   "$PY" -m pip install --quiet --break-system-packages -r requirements.txt 2>/dev/null \
     || "$PY" -m pip install --quiet -r requirements.txt
 fi
-"$PY" -c "import fastapi, uvicorn, jinja2, cryptography" 2>/dev/null \
+"$PY" -c "import fastapi, uvicorn, jinja2, cryptography, multipart" 2>/dev/null \
   || { echo "!! dependency install failed (need python3-pip)"; exit 1; }
 
 # --- shared secret -----------------------------------------------------------
