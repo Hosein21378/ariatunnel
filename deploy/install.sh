@@ -24,8 +24,13 @@ fi
 cd "$DIR"
 
 # --- deps --------------------------------------------------------------------
-python3 -m pip install --quiet --break-system-packages -r requirements.txt 2>/dev/null \
-  || python3 -m pip install --quiet -r requirements.txt
+if ! python3 -c "import fastapi, uvicorn, jinja2, cryptography" 2>/dev/null; then
+  python3 -m pip --version >/dev/null 2>&1 || apt-get install -y -qq python3-pip
+  python3 -m pip install --quiet --break-system-packages -r requirements.txt 2>/dev/null \
+    || python3 -m pip install --quiet -r requirements.txt
+fi
+python3 -c "import fastapi, uvicorn, jinja2, cryptography" 2>/dev/null \
+  || { echo "!! dependency install failed (need python3-pip)"; exit 1; }
 
 # --- shared secret -----------------------------------------------------------
 if [ ! -f "$SECRET_FILE" ]; then
